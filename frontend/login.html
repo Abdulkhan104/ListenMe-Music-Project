@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign In — ListenMe</title>
+  <link rel="stylesheet" href="shared.css" />
+  <style>
+    .auth-wrapper { position: relative; overflow: hidden; }
+
+    /* Animated floating notes in background */
+    .bg-notes {
+      position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden;
+    }
+    .note {
+      position: absolute; font-size: 24px; opacity: 0;
+      animation: floatNote linear infinite;
+      user-select: none;
+    }
+    @keyframes floatNote {
+      0%   { opacity: 0;   transform: translateY(100vh) rotate(0deg)   scale(0.8); }
+      10%  { opacity: 0.15; }
+      90%  { opacity: 0.08; }
+      100% { opacity: 0;   transform: translateY(-10vh) rotate(360deg) scale(1.2); }
+    }
+
+    .auth-card { position: relative; z-index: 1; }
+
+    .welcome-back {
+      font-size: 12px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.12em; color: var(--accent);
+      margin-bottom: 8px; display: block;
+      animation: fadeInUp 0.4s 0.05s ease both;
+    }
+
+    .divider {
+      display: flex; align-items: center; gap: 12px;
+      margin: 20px 0; color: var(--muted); font-size: 12px;
+    }
+    .divider::before, .divider::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+
+    .form-group { animation: fadeInUp 0.4s ease both; }
+    .form-group:nth-child(1) { animation-delay: 0.08s; }
+    .form-group:nth-child(2) { animation-delay: 0.13s; }
+    .form-group:nth-child(3) { animation-delay: 0.18s; }
+
+    .forgot-link {
+      display: block; text-align: right; font-size: 12px;
+      color: var(--muted); text-decoration: none;
+      margin-top: -12px; margin-bottom: 20px;
+      transition: color 0.2s;
+    }
+    .forgot-link:hover { color: var(--accent); }
+  </style>
+</head>
+<body>
+
+<!-- Floating music notes background -->
+<div class="bg-notes" id="bgNotes"></div>
+
+<div class="auth-wrapper">
+  <div class="auth-card">
+
+    <div class="auth-logo">
+      <div class="logo-icon">🎧</div>
+      Listen<span>Me</span>
+    </div>
+
+    <span class="welcome-back">Welcome back</span>
+    <p class="auth-subtitle">Sign in to your account to keep listening.</p>
+
+    <div class="alert alert-error" id="err"></div>
+    <div class="alert alert-info"  id="info"></div>
+
+    <div class="form-group">
+      <label>Email</label>
+      <input type="email" id="email" placeholder="you@example.com" autocomplete="email" />
+    </div>
+
+    <div class="form-group">
+      <label>Password</label>
+      <div class="password-wrap">
+        <input type="password" id="password" placeholder="Your password" autocomplete="current-password" />
+        <span class="toggle-pw" onclick="togglePw()">👁</span>
+      </div>
+    </div>
+
+    <a href="forgot-password.html" class="forgot-link">Forgot your password?</a>
+
+    <button class="btn btn-primary" id="loginBtn" onclick="doLogin()">
+      <span id="loginText">Sign In</span>
+      <div class="spinner" id="loginSpinner"></div>
+    </button>
+
+    <div class="link-row" style="margin-top:20px;">
+      New here? <a href="signup.html">Create an account</a>
+    </div>
+
+    <div class="link-row" style="margin-top:10px;">
+      <a href="index.html" style="color:var(--muted);font-size:13px;">← Back to home</a>
+    </div>
+
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+if (localStorage.getItem('token')) window.location.href = 'play.html';
+
+// Floating notes
+const notes = ['🎵','🎶','🎸','🎹','🎺','🎻','🥁','🎤','🎧','♪','♫'];
+const bg = document.getElementById('bgNotes');
+for (let i = 0; i < 18; i++) {
+  const el = document.createElement('div');
+  el.className = 'note';
+  el.textContent = notes[Math.floor(Math.random() * notes.length)];
+  el.style.left     = Math.random() * 100 + 'vw';
+  el.style.animationDuration  = (12 + Math.random() * 18) + 's';
+  el.style.animationDelay     = (Math.random() * 14) + 's';
+  el.style.fontSize = (16 + Math.random() * 20) + 'px';
+  bg.appendChild(el);
+}
+
+function togglePw() {
+  const input = document.getElementById('password');
+  const icon  = document.querySelector('.toggle-pw');
+  input.type  = input.type === 'password' ? 'text' : 'password';
+  icon.textContent = input.type === 'password' ? '👁' : '🙈';
+}
+
+function showErr(msg) {
+  const el = document.getElementById('err');
+  el.textContent = msg; el.style.display = 'block';
+  el.style.animation = 'none';
+  requestAnimationFrame(() => el.style.animation = '');
+}
+
+function setLoading(on) {
+  document.getElementById('loginText').style.display    = on ? 'none' : 'inline';
+  document.getElementById('loginSpinner').style.display = on ? 'block' : 'none';
+  document.getElementById('loginBtn').disabled          = on;
+}
+
+async function doLogin() {
+  document.getElementById('err').style.display  = 'none';
+  document.getElementById('info').style.display = 'none';
+  const email    = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  if (!email || !password) return showErr('Please enter your email and password.');
+
+  setLoading(true);
+  try {
+    const data = await api.post('/auth/login', { email, password }, false);
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify(data.user));
+    window.location.href = 'play.html';
+  } catch (e) {
+    if (e.needs_verify) {
+      const info = document.getElementById('info');
+      info.textContent = 'Your email is not verified yet. Please complete signup.';
+      info.style.display = 'block';
+    } else {
+      showErr(e.error || 'Login failed. Check your email and password.');
+    }
+  } finally {
+    setLoading(false);
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+</script>
+</body>
+</html>

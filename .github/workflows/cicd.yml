@@ -1,0 +1,93 @@
+name: Build Docker Images & Push to ECR
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 🔐 Configure AWS Credentials
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # 🔹 Login to Amazon ECR
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # 🔹 Set Image Tag
+      - name: Set Image Tag
+        id: vars
+        run: echo "TAG=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      # 🔹 Create ECR Repositories (if not exist)
+      - name: Create Backend ECR Repo
+        run: |
+          aws ecr describe-repositories --repository-names backend || \
+          aws ecr create-repository --repository-name backend
+
+      - name: Create Frontend ECR Repo
+        run: |
+          aws ecr describe-repositories --repository-names frontend || \
+          aws ecr create-repository --repository-name frontend
+
+      # 🔹 Build Backend Image
+      - name: Build Backend Image
+        run: |
+          docker build -t backend:${{ steps.vars.outputs.TAG }} ./backend
+
+      - name: Tag Backend Image
+        run: |
+          docker tag backend:${{ steps.vars.outputs.TAG }} \
+          ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/backend:${{ steps.vars.outputs.TAG }}
+
+      - name: Push Backend Image
+        run: |
+          docker push \
+          ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/backend:${{ steps.vars.outputs.TAG }}
+
+      # 🔹 Build Frontend Image
+      - name: Build Frontend Image
+        run: |
+          docker build -t frontend:${{ steps.vars.outputs.TAG }} ./frontend
+
+      - name: Tag Frontend Image
+        run: |
+          docker tag frontend:${{ steps.vars.outputs.TAG }} \
+          ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/frontend:${{ steps.vars.outputs.TAG }}
+
+      - name: Push Frontend Image
+        run: |
+          docker push \
+          ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/frontend:${{ steps.vars.outputs.TAG }}
+
+      # 🔹 Update K8s YAML
+      - name: Update Backend Image in YAML
+        run: |
+          sed -i "s|image:.*backend.*|image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/backend:${{ steps.vars.outputs.TAG }}|g" k8s/backend-deployment.yaml
+
+      - name: Update Frontend Image in YAML
+        run: |
+          sed -i "s|image:.*frontend.*|image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/frontend:${{ steps.vars.outputs.TAG }}|g" k8s/frontend-deployment.yaml
+
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "actions@github.com"
+          git add k8s/
+          git commit -m "Update image tags to ${{ steps.vars.outputs.TAG }}" || echo "No changes to commit"
+          git push

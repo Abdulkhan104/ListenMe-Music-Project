@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign Up — ListenMe</title>
+  <link rel="stylesheet" href="shared.css" />
+  <style>
+    .step { display: none; }
+    .step.active { display: block; }
+
+    .back-btn {
+      background: none; border: none; color: var(--muted);
+      cursor: pointer; font-size: 13px; margin-bottom: 24px;
+      display: flex; align-items: center; gap: 6px;
+      font-family: var(--font-body);
+    }
+    .back-btn:hover { color: var(--text); }
+
+    .step-indicator {
+      display: flex; gap: 8px; margin-bottom: 32px;
+    }
+    .dot {
+      height: 4px; border-radius: 4px; background: var(--border);
+      flex: 1; transition: background 0.3s;
+    }
+    .dot.active { background: var(--primary); }
+
+    .otp-hint {
+      text-align: center; font-size: 13px; color: var(--muted); margin-top: 12px;
+    }
+    .otp-hint a { color: var(--accent); cursor: pointer; }
+
+    .resend-timer { font-size: 13px; color: var(--muted); text-align: center; margin-top: 8px; }
+  </style>
+</head>
+<body>
+<div class="auth-wrapper">
+  <div class="auth-card">
+
+    <div class="step-indicator">
+      <div class="dot active" id="dot1"></div>
+      <div class="dot" id="dot2"></div>
+    </div>
+
+    <!-- STEP 1: Register -->
+    <div class="step active" id="step1">
+      <div class="auth-logo">🎧 Listen<span>Me</span></div>
+      <p class="auth-subtitle">Create your account — it's free forever.</p>
+
+      <div class="alert alert-error" id="err1"></div>
+
+      <div class="form-group">
+        <label>Full Name</label>
+        <input type="text" id="name" placeholder="Your name" />
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="email" placeholder="you@example.com" />
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="password" placeholder="Min. 6 characters" />
+      </div>
+
+      <button class="btn btn-primary" id="signupBtn" onclick="doSignup()">
+        <span id="signupText">Create Account</span>
+        <div class="spinner" id="signupSpinner"></div>
+      </button>
+
+      <div class="link-row">Already have an account? <a href="login.html">Sign in</a></div>
+    </div>
+
+    <!-- STEP 2: Verify OTP -->
+    <div class="step" id="step2">
+      <button class="back-btn" onclick="goBack()">← Back</button>
+      <div class="auth-logo">Check your <span>inbox</span></div>
+      <p class="auth-subtitle">We sent a 6-digit code to <strong id="sentTo"></strong></p>
+
+      <div class="alert alert-error" id="err2"></div>
+      <div class="alert alert-success" id="suc2"></div>
+
+      <div class="otp-group">
+        <input class="otp-digit" type="text" maxlength="1" oninput="otpInput(this, 0)" onkeydown="otpKey(event, 0)" />
+        <input class="otp-digit" type="text" maxlength="1" oninput="otpInput(this, 1)" onkeydown="otpKey(event, 1)" />
+        <input class="otp-digit" type="text" maxlength="1" oninput="otpInput(this, 2)" onkeydown="otpKey(event, 2)" />
+        <input class="otp-digit" type="text" maxlength="1" oninput="otpInput(this, 3)" onkeydown="otpKey(event, 3)" />
+        <input class="otp-digit" type="text" maxlength="1" oninput="otpInput(this, 4)" onkeydown="otpKey(event, 4)" />
+        <input class="otp-digit" type="text" maxlength="1" oninput="otpInput(this, 5)" onkeydown="otpKey(event, 5)" />
+      </div>
+
+      <button class="btn btn-primary" id="verifyBtn" onclick="doVerify()">
+        <span id="verifyText">Verify & Continue</span>
+        <div class="spinner" id="verifySpinner"></div>
+      </button>
+
+      <div class="resend-timer" id="resendTimer">Resend in <span id="timer">60</span>s</div>
+      <div class="otp-hint" id="resendLink" style="display:none;">
+        Didn't receive it? <a onclick="resendOTP()">Resend code</a>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+  if (localStorage.getItem('token')) window.location.href = 'play.html';
+
+  const otpDigits = document.querySelectorAll('.otp-digit');
+
+  function otpInput(el, idx) {
+    if (el.value && idx < 5) otpDigits[idx + 1].focus();
+    if (getOTP().length === 6) doVerify();
+  }
+
+  function otpKey(e, idx) {
+    if (e.key === 'Backspace' && !otpDigits[idx].value && idx > 0)
+      otpDigits[idx - 1].focus();
+  }
+
+  function getOTP() {
+    return [...otpDigits].map(d => d.value).join('');
+  }
+
+  function showErr(id, msg) {
+    const el = document.getElementById(id);
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+  function hideErr(id) { document.getElementById(id).style.display = 'none'; }
+
+  function setLoading(textId, spinnerId, btnId, loading) {
+    document.getElementById(textId).style.display = loading ? 'none' : 'inline';
+    document.getElementById(spinnerId).style.display = loading ? 'block' : 'none';
+    document.getElementById(btnId).disabled = loading;
+  }
+
+  async function doSignup() {
+    hideErr('err1');
+    const name     = document.getElementById('name').value.trim();
+    const email    = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+
+    if (!name || !email || !password) return showErr('err1', 'All fields are required.');
+    if (password.length < 6) return showErr('err1', 'Password must be at least 6 characters.');
+
+    setLoading('signupText', 'signupSpinner', 'signupBtn', true);
+    try {
+      await api.post('/auth/signup', { name, email, password }, false);
+      document.getElementById('sentTo').textContent = email;
+      document.getElementById('dot2').classList.add('active');
+      document.getElementById('step1').classList.remove('active');
+      document.getElementById('step2').classList.add('active');
+      otpDigits[0].focus();
+      startTimer();
+    } catch (e) {
+      showErr('err1', e.error || 'Signup failed.');
+    } finally {
+      setLoading('signupText', 'signupSpinner', 'signupBtn', false);
+    }
+  }
+
+  async function doVerify() {
+    hideErr('err2');
+    const code = getOTP();
+    if (code.length !== 6) return;
+
+    const email = document.getElementById('email').value.trim();
+    setLoading('verifyText', 'verifySpinner', 'verifyBtn', true);
+    try {
+      const data = await api.post('/auth/verify-email', { email, code }, false);
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      window.location.href = 'play.html';
+    } catch (e) {
+      showErr('err2', e.error || 'Invalid code.');
+      otpDigits.forEach(d => d.value = '');
+      otpDigits[0].focus();
+    } finally {
+      setLoading('verifyText', 'verifySpinner', 'verifyBtn', false);
+    }
+  }
+
+  let timerInterval;
+  function startTimer() {
+    let t = 60;
+    document.getElementById('resendTimer').style.display = 'block';
+    document.getElementById('resendLink').style.display = 'none';
+    timerInterval = setInterval(() => {
+      document.getElementById('timer').textContent = --t;
+      if (t <= 0) {
+        clearInterval(timerInterval);
+        document.getElementById('resendTimer').style.display = 'none';
+        document.getElementById('resendLink').style.display = 'block';
+      }
+    }, 1000);
+  }
+
+  async function resendOTP() {
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    try {
+      await api.post('/auth/signup', {
+        name: document.getElementById('name').value.trim(),
+        email, password
+      }, false);
+      otpDigits.forEach(d => d.value = '');
+      otpDigits[0].focus();
+      const s = document.getElementById('suc2');
+      s.textContent = 'New code sent!'; s.style.display = 'block';
+      setTimeout(() => s.style.display = 'none', 3000);
+      startTimer();
+    } catch(e) { showErr('err2', e.error || 'Failed to resend.'); }
+  }
+
+  function goBack() {
+    document.getElementById('step2').classList.remove('active');
+    document.getElementById('step1').classList.add('active');
+    document.getElementById('dot2').classList.remove('active');
+    clearInterval(timerInterval);
+  }
+</script>
+</body>
+</html>
